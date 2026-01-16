@@ -1,0 +1,990 @@
+local Players = game:GetService("Players")
+local lp = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local hooked = false
+local lastHumanoid = nil
+
+local function applyBypass(force)
+    local char = lp.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    if not force and lastHumanoid == hum then return end
+    lastHumanoid = hum
+    hum.PlatformStand = false
+    if not hooked then
+        hooked = true
+        local mt = getrawmetatable(game)
+        local oldNamecall = mt.__namecall
+        local oldIndex = mt.__index
+        setreadonly(mt, false)
+        mt.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            if method == "FireServer" and typeof(self) == "Instance" and self.Name and self.Name:lower():find("check") then
+                return nil
+            end
+            return oldNamecall(self, ...)
+        end)
+        mt.__index = newcclosure(function(t, k)
+            if not checkcaller() and lastHumanoid and t == lastHumanoid and k == "WalkSpeed" then
+                return 16
+            end
+            return oldIndex(t, k)
+        end)
+        setreadonly(mt, true)
+    end
+end
+
+task.delay(1, function() applyBypass(true) end)
+lp.CharacterAdded:Connect(function() task.wait(1) applyBypass(true) end)
+task.spawn(function() while true do task.wait(10) applyBypass(true) end end)
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "잼잼허브",
+    Icon = 0,
+    LoadingTitle = "잼잼허브 로딩중",
+    LoadingSubtitle = "by 잼잼이",
+    Theme = "Amethyst",
+    DisableRayfieldPrompts = false,
+    DisableBuildWarnings = false,
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "JamJamHubConfigs",
+        FileName = "MainConfig"
+    },
+    KeySystem = false,
+})
+
+local Tab = Window:CreateTab("Main", 0)
+
+local SpeedEnabled = false
+local TargetSpeed = 16
+-- [새로운 변수 추가]
+local JumpEnabled = false
+local TargetJump = 50
+
+local RespawnAtPos = false
+local LastDeathPos = nil
+local RespawnAtSetPos = false
+local SavedSpawnPos = nil
+local AutoBuyOnRespawn = false
+local AutoEquipEnabled = false
+local staffDetectEnabled = false
+local noclipEnabled = false
+local xrayEnabled = false
+local flyJumpEnabled = false
+
+local Toggle1, Toggle2
+local enabledGuis = {} 
+local xrayData = {}
+
+local blacklist = {
+    "CJY_EZ", "LivingInAParanoid", "great_june", "SELOXIMA", 
+    "Ranhoho", "king_f123t", "Kevin222494", "SELOXIMA_0", 
+    "SELOXIMA_1", "ttjh20", "yshaD12", "bbisunimi"
+}
+
+local function checkStaff(player)
+    if not staffDetectEnabled then return end
+    if player == lp then return end
+    for _, name in pairs(blacklist) do
+        if player.Name == name or player.DisplayName == name then
+            lp:Kick("개좆됐다 관리자뜸 우흥: " .. name)
+            task.wait(0.1)
+            game:Shutdown()
+            break
+        end
+    end
+end
+
+local function syncSpeed()
+    local char = lp.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.WalkSpeed = SpeedEnabled and TargetSpeed or 16
+    end
+end
+
+-- [점프력 동기화 함수 추가]
+local function syncJump()
+    local char = lp.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.UseJumpPower = true
+        hum.JumpPower = JumpEnabled and TargetJump or 50
+    end
+end
+
+local function changeAllGuiColor(color)
+    local pGui = lp:FindFirstChild("PlayerGui")
+    if pGui then
+        for _, v in pairs(pGui:GetDescendants()) do
+            if not v:IsDescendantOf(game:GetService("CoreGui")) then
+                if v:IsA("GuiObject") then
+                    v.BackgroundColor3 = color
+                    v.BorderColor3 = color
+                end
+                if v:IsA("ImageLabel") or v:IsA("ImageButton") then
+                    v.ImageColor3 = color
+                end
+            end
+        end
+    end
+end
+
+task.spawn(function()
+    while true do
+        changeAllGuiColor(Color3.fromRGB(41, 19, 68))
+        task.wait(5)
+    end
+end)
+
+local function checkAndBuy()
+    local stats = lp:WaitForChild("leaderstats", 5)
+    if not stats then return end
+    local kills = stats:FindFirstChild("킬") or stats:FindFirstChild("Kills")
+    if kills and kills.Value == 0 then
+        Rayfield:Notify({
+            Title = "리스폰 칼 자동 사기 안내",
+            Content = "돈이 부족합니다",
+            Duration = 4.5,
+        })
+        return
+    end
+    local args = {"\236\185\188"}
+    local rs = game:GetService("ReplicatedStorage")
+    local aa = rs:FindFirstChild("aa")
+    if aa then
+        aa:FireServer(unpack(args))
+    end
+end
+
+RunService.Stepped:Connect(function()
+    if noclipEnabled and lp.Character then
+        for _, part in pairs(lp.Character:GetDescendants()) do
+            if part:IsA("BasePart") and part.CanCollide then
+                part.CanCollide = false
+            end
+        end
+    end
+end)
+
+local function setXray(v)
+    xrayEnabled = v
+    if xrayEnabled then
+        for _, part in pairs(workspace:GetDescendants()) do
+            if part:IsA("BasePart") and not part:IsDescendantOf(lp.Character) then
+                xrayData[part] = part.Transparency
+                part.Transparency = 0.5
+            end
+        end
+    else
+        for part, original in pairs(xrayData) do
+            if part and part.Parent then
+                part.Transparency = original
+            end
+        end
+        xrayData = {}
+    end
+end
+
+RunService.Heartbeat:Connect(function()
+    if AutoEquipEnabled then
+        local char = lp.Character
+        if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
+            if not char:FindFirstChildOfClass("Tool") then
+                local backpack = lp:FindFirstChild("Backpack")
+                if backpack then
+                    local items = backpack:GetChildren()
+                    if #items > 0 and items[1]:IsA("Tool") then
+                        char.Humanoid:EquipTool(items[1])
+                    end
+                end
+            end
+        end
+    end
+end)
+
+UserInputService.JumpRequest:Connect(function()
+    if flyJumpEnabled then
+        local char = lp.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+lp.CharacterAdded:Connect(function(char)
+    task.wait(0.5)
+    syncSpeed()
+    syncJump() -- 리스폰 시 점프력 적용
+    if AutoBuyOnRespawn then
+        task.spawn(checkAndBuy)
+    end
+    local targetCF = nil
+    if RespawnAtPos and LastDeathPos then
+        targetCF = LastDeathPos
+    elseif RespawnAtSetPos and SavedSpawnPos then
+        targetCF = SavedSpawnPos
+    end
+    if targetCF then
+        local hrp = char:WaitForChild("HumanoidRootPart", 5)
+        if hrp then
+            task.wait(0.1)
+            hrp.CFrame = targetCF
+        end
+    end
+    char:WaitForChild("Humanoid").Died:Connect(function()
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            LastDeathPos = hrp.CFrame
+        end
+    end)
+end)
+
+Tab:CreateToggle({
+    Name = "스테프 디텍터",
+    CurrentValue = false,
+    Flag = "StaffDetectorToggle",
+    Callback = function(v)
+        staffDetectEnabled = v
+        if v then
+            for _, player in pairs(Players:GetPlayers()) do
+                checkStaff(player)
+            end
+        end
+    end,
+})
+
+Tab:CreateToggle({
+    Name = "노클립",
+    CurrentValue = false,
+    Flag = "NoclipToggle",
+    Callback = function(v)
+        noclipEnabled = v
+    end,
+})
+
+Tab:CreateToggle({
+    Name = "Xray",
+    CurrentValue = false,
+    Flag = "XrayToggle",
+    Callback = function(v)
+        setXray(v)
+    end,
+})
+
+Tab:CreateToggle({
+    Name = "무한 점프 (FlyJump)",
+    CurrentValue = false,
+    Flag = "FlyJumpToggle",
+    Callback = function(v)
+        flyJumpEnabled = v
+    end,
+})
+
+Tab:CreateSection("수치 조절")
+
+Tab:CreateToggle({
+    Name = "스피드 활성화",
+    CurrentValue = false,
+    Flag = "SpeedEnabledFlag",
+    Callback = function(v)
+        SpeedEnabled = v
+        syncSpeed()
+    end,
+})
+
+Tab:CreateSlider({
+    Name = "속도 조절",
+    Range = {16, 150},
+    Increment = 1,
+    CurrentValue = 16,
+    Flag = "SpeedSliderFlag",
+    Callback = function(v)
+        TargetSpeed = v
+        syncSpeed()
+    end,
+})
+
+-- [새로운 점프력 토글 및 슬라이더]
+Tab:CreateToggle({
+    Name = "점프력 활성화",
+    CurrentValue = false,
+    Flag = "JumpEnabledFlag",
+    Callback = function(v)
+        JumpEnabled = v
+        syncJump()
+    end,
+})
+
+Tab:CreateSlider({
+    Name = "점프력 조절",
+    Range = {50, 300},
+    Increment = 1,
+    CurrentValue = 50,
+    Flag = "JumpSliderFlag",
+    Callback = function(v)
+        TargetJump = v
+        syncJump()
+    end,
+})
+
+Tab:CreateSection("리스폰 및 기타")
+
+Toggle1 = Tab:CreateToggle({
+    Name = "죽은 자리에서 리스폰",
+    CurrentValue = false,
+    Flag = "RespawnAtPosFlag",
+    Callback = function(v)
+        RespawnAtPos = v
+        if v then
+            RespawnAtSetPos = false
+            Toggle2:Set(false)
+        end
+    end,
+})
+
+Toggle2 = Tab:CreateToggle({
+    Name = "현재 위치 리스폰 고정",
+    CurrentValue = false,
+    Flag = "RespawnAtSetPosFlag",
+    Callback = function(v)
+        RespawnAtSetPos = v
+        if v then
+            RespawnAtPos = false
+            Toggle1:Set(false)
+            local char = lp.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                SavedSpawnPos = char.HumanoidRootPart.CFrame
+            end
+        end
+    end,
+})
+
+Tab:CreateToggle({
+    Name = "리스폰시 칼 구매",
+    CurrentValue = false,
+    Flag = "AutoBuyFlag",
+    Callback = function(v)
+        AutoBuyOnRespawn = v
+    end,
+})
+
+Tab:CreateToggle({
+    Name = "1번 고정",
+    CurrentValue = false,
+    Flag = "AutoEquipFlag",
+    Callback = function(v)
+        AutoEquipEnabled = v
+    end,
+})
+
+Tab:CreateToggle({
+    Name = "레이필드 제외 GUI 숨기기",
+    CurrentValue = false,
+    Flag = "HideGuiFlag",
+    Callback = function(Value)
+        local PlayerGui = lp:WaitForChild("PlayerGui")
+        if Value then
+            enabledGuis = {}
+            for _, v in pairs(PlayerGui:GetChildren()) do
+                if v:IsA("ScreenGui") and not string.find(v.Name:lower(), "rayfield") and v.Name ~= "TouchGui" then
+                    if v.Enabled == true then
+                        table.insert(enabledGuis, v)
+                        v.Enabled = false
+                    end
+                end
+            end
+        else
+            for _, v in pairs(enabledGuis) do
+                if v and v.Parent then
+                    v.Enabled = true
+                end
+            end
+            enabledGuis = {}
+        end
+    end,
+})
+
+Tab:CreateColorPicker({
+    Name = "모든 게임 GUI 색상 덧칠",
+    Color = Color3.fromRGB(41, 19, 68),
+    Flag = "GuiColorPickerFlag",
+    Callback = function(Value)
+        changeAllGuiColor(Value)
+    end
+})
+
+local RainbowGuiEnabled = false
+local RainbowConnection = nil
+
+Tab:CreateToggle({
+    Name = "모든 GUI 레인보우 모드",
+    CurrentValue = false,
+    Flag = "RainbowGuiFlag",
+    Callback = function(Value)
+        RainbowGuiEnabled = Value
+        if Value then
+            local hue = 0
+            RainbowConnection = RunService.Heartbeat:Connect(function()
+                hue = hue + 0.01 
+                if hue > 1 then hue = 0 end
+                local rainbowColor = Color3.fromHSV(hue, 1, 1)
+                changeAllGuiColor(rainbowColor)
+            end)
+        else
+            if RainbowConnection then
+                RainbowConnection:Disconnect()
+                RainbowConnection = nil
+            end
+        end
+    end,
+})
+
+Tab:CreateSlider({
+    Name = "코인(킬) 값 조절(클라이언트 재미용)",
+    Range = {0, 1000000},
+    Increment = 100,
+    CurrentValue = 0,
+    Flag = "CoinSliderFlag",
+    Callback = function(Value)
+        local stats = lp:FindFirstChild("leaderstats")
+        if stats then
+            local coinValue = stats:FindFirstChild("킬")
+            if coinValue then
+                coinValue.Value = Value
+            end
+        end
+    end,
+})
+
+Tab:CreateButton({
+    Name = "오토팜 gui로드하기",
+    Callback = function()
+        local TweenService = game:GetService("TweenService")
+        local UserInputService = game:GetService("UserInputService")
+        local VirtualUser = game:GetService("VirtualUser")
+        local TOWER_1_POS = Vector3.new(160, 384, -86)
+        local TOWER_2_POS = Vector3.new(-97.3, 163.5, 225.0)
+        local INTERVAL = 120
+        local WAIT_BETWEEN = 8
+        local running = false
+        lp.Idled:Connect(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
+        end)
+        local function burnPart(targetPos)
+            local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hrp.CFrame = CFrame.new(targetPos)
+                task.wait(0.7)
+                for _, v in pairs(workspace:GetDescendants()) do
+                    if v:IsA("TouchInterest") and v.Parent and v.Parent.Name == "Part" then
+                        if (v.Parent.Position - targetPos).Magnitude < 25 then
+                            firetouchinterest(hrp, v.Parent, 0)
+                            task.wait()
+                            firetouchinterest(hrp, v.Parent, 1)
+                        end
+                    end
+                end
+            end
+        end
+        local gui = Instance.new("ScreenGui")
+        gui.Name = "JamJamSyncRainbow"
+        gui.ResetOnSpawn = false
+        gui.Parent = lp:WaitForChild("PlayerGui")
+        local mainFrame = Instance.new("Frame")
+        mainFrame.Size = UDim2.new(0, 210, 0, 150)
+        mainFrame.Position = UDim2.new(0.5, -105, 0.4, -75)
+        mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+        mainFrame.BackgroundTransparency = 0.15
+        mainFrame.Active = true
+        mainFrame.Parent = gui
+        Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 12)
+        local stroke = Instance.new("UIStroke")
+        stroke.Thickness = 3
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        stroke.Parent = mainFrame
+        local title = Instance.new("TextLabel")
+        title.Size = UDim2.new(1, 0, 0, 40)
+        title.Text = "잼잼이 오토팜" 
+        title.Font = Enum.Font.GothamBold
+        title.TextSize = 18
+        title.BackgroundTransparency = 1
+        title.Parent = mainFrame
+        task.spawn(function()
+            local hue = 0
+            while true do
+                hue = hue + 1/360
+                if hue > 1 then hue = 0 end
+                local rainbowColor = Color3.fromHSV(hue, 0.7, 1)
+                stroke.Color = rainbowColor 
+                title.TextColor3 = rainbowColor 
+                task.wait()
+            end
+        end)
+        local status = Instance.new("TextLabel")
+        status.Size = UDim2.new(1, 0, 0, 20)
+        status.Position = UDim2.new(0, 0, 0.3, 0)
+        status.Text = "준비 완료"
+        status.TextColor3 = Color3.fromRGB(255, 255, 255)
+        status.Font = Enum.Font.Gotham
+        status.TextSize = 12
+        status.BackgroundTransparency = 1
+        status.Parent = mainFrame
+        local startBtn = Instance.new("TextButton")
+        startBtn.Size = UDim2.new(0.85, 0, 0, 32)
+        startBtn.Position = UDim2.new(0.075, 0, 0.5, 0)
+        startBtn.Text = "오토팜 시작"
+        startBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        startBtn.TextColor3 = Color3.new(1, 1, 1)
+        startBtn.Font = Enum.Font.GothamBold
+        startBtn.Parent = mainFrame
+        Instance.new("UICorner", startBtn)
+        local stopBtn = Instance.new("TextButton")
+        stopBtn.Size = UDim2.new(0.85, 0, 0, 32)
+        stopBtn.Position = UDim2.new(0.075, 0, 0.76, 0)
+        stopBtn.Text = "중지"
+        stopBtn.BackgroundColor3 = Color3.fromRGB(50, 25, 25)
+        stopBtn.TextColor3 = Color3.new(1, 1, 1)
+        stopBtn.Font = Enum.Font.GothamBold
+        stopBtn.Parent = mainFrame
+        Instance.new("UICorner", stopBtn)
+        local dragging, dragStart, startPos
+        mainFrame.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true; dragStart = input.Position; startPos = mainFrame.Position
+            end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                local delta = input.Position - dragStart
+                local targetPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+                TweenService:Create(mainFrame, TweenInfo.new(0.12, Enum.EasingStyle.Sine), {Position = targetPos}):Play()
+            end
+        end)
+        UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
+        startBtn.MouseButton1Click:Connect(function()
+            if running then return end
+            running = true; startBtn.Text = "작동 중..."
+            task.spawn(function()
+                while running do
+                    status.Text = "타워 1 파밍 중"; burnPart(TOWER_1_POS)
+                    for i = WAIT_BETWEEN, 1, -1 do
+                        if not running then break end
+                        status.Text = "타워 2 이동까지: "..i.."s"; task.wait(1)
+                    end
+                    if running then status.Text = "타워 2 파밍 중"; burnPart(TOWER_2_POS) end
+                    local rem = INTERVAL
+                    while rem > 0 and running do status.Text = "재충전 대기: "..rem.."s"; task.wait(1); rem -= 1 end
+                end
+            end)
+        end)
+        stopBtn.MouseButton1Click:Connect(function() running = false; status.Text = "중지됨"; startBtn.Text = "오토팜 시작" end)
+    end,
+})
+
+Tab:CreateButton({
+    Name = "리치 스크립트 로드하기",
+    Callback = function()
+        local TweenService = game:GetService("TweenService")
+        local UserInputService = game:GetService("UserInputService")
+        local range = 20
+        local reachEnabled = false
+        local gui = Instance.new("ScreenGui")
+        gui.Name = "JamJamReachGUI"
+        gui.ResetOnSpawn = false
+        gui.Parent = lp.PlayerGui
+        local mainFrame = Instance.new("Frame")
+        mainFrame.Size = UDim2.new(0, 210, 0, 180)
+        mainFrame.Position = UDim2.new(0.5, -105, 0.4, -90)
+        mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+        mainFrame.BackgroundTransparency = 0.15
+        mainFrame.Active = true
+        mainFrame.Parent = gui
+        Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 12)
+        local stroke = Instance.new("UIStroke")
+        stroke.Thickness = 3
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        stroke.Parent = mainFrame
+        local title = Instance.new("TextLabel")
+        title.Size = UDim2.new(1, 0, 0, 40)
+        title.Text = "리치 스크립트"
+        title.Font = Enum.Font.GothamBold
+        title.TextSize = 18
+        title.BackgroundTransparency = 1
+        title.Parent = mainFrame
+        local status = Instance.new("TextLabel")
+        status.Size = UDim2.new(1, 0, 0, 20)
+        status.Position = UDim2.new(0, 0, 0.22, 0)
+        status.Text = "상태: 꺼짐"
+        status.TextColor3 = Color3.fromRGB(200, 200, 200)
+        status.Font = Enum.Font.Gotham
+        status.TextSize = 12
+        status.BackgroundTransparency = 1
+        status.Parent = mainFrame
+        task.spawn(function()
+            local hue = 0
+            while true do
+                hue = hue + 1/360
+                if hue > 1 then hue = 0 end
+                local rainbowColor = Color3.fromHSV(hue, 0.7, 1)
+                stroke.Color = rainbowColor; title.TextColor3 = rainbowColor; task.wait()
+            end
+        end)
+        local toggleBtn = Instance.new("TextButton")
+        toggleBtn.Size = UDim2.new(0.85, 0, 0, 35)
+        toggleBtn.Position = UDim2.new(0.075, 0, 0.4, 0)
+        toggleBtn.Text = "작동 시작 (OFF)"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+        toggleBtn.Font = Enum.Font.GothamBold
+        toggleBtn.Parent = mainFrame
+        Instance.new("UICorner", toggleBtn)
+        local rangeBox = Instance.new("TextBox")
+        rangeBox.Size = UDim2.new(0.85, 0, 0, 32)
+        rangeBox.Position = UDim2.new(0.075, 0, 0.78, 0)
+        rangeBox.Text = tostring(range)
+        rangeBox.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        rangeBox.TextColor3 = Color3.new(1, 1, 1)
+        rangeBox.Font = Enum.Font.GothamBold
+        rangeBox.Parent = mainFrame
+        Instance.new("UICorner", rangeBox)
+        toggleBtn.MouseButton1Click:Connect(function()
+            reachEnabled = not reachEnabled
+            if reachEnabled then
+                toggleBtn.Text = "작동 중 (ON)"; toggleBtn.BackgroundColor3 = Color3.fromRGB(30, 60, 30); status.Text = "상태: 리치 활성화됨"
+            else
+                toggleBtn.Text = "작동 시작 (OFF)"; toggleBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35); status.Text = "상태: 꺼짐"
+            end
+        end)
+        rangeBox.FocusLost:Connect(function()
+            local num = tonumber(rangeBox.Text)
+            if num then range = num; status.Text = "범위가 " .. num .. "으로 설정됨" else rangeBox.Text = tostring(range) end
+        end)
+        local dragging, dragStart, startPos
+        mainFrame.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = true; dragStart = input.Position; startPos = mainFrame.Position end end)
+        UserInputService.InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then local delta = input.Position - dragStart; local targetPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y); TweenService:Create(mainFrame, TweenInfo.new(0.12, Enum.EasingStyle.Sine), {Position = targetPos}):Play() end end)
+        UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
+        RunService.RenderStepped:Connect(function()
+            if not reachEnabled then return end
+            local players = Players:GetPlayers()
+            for i = 1, #players do
+                local targetPlayer = players[i]
+                if targetPlayer ~= lp then
+                    local char = targetPlayer.Character
+                    if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 and char:FindFirstChild("HumanoidRootPart") then
+                        local mag = (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) and (lp.Character.HumanoidRootPart.Position - char.HumanoidRootPart.Position).Magnitude or 1000
+                        if mag <= range then
+                            local tool = lp.Character and lp.Character:FindFirstChildOfClass("Tool")
+                            if tool and tool:FindFirstChild("Handle") then
+                                tool:Activate()
+                                for _, part in pairs(char:GetChildren()) do if part:IsA("BasePart") then firetouchinterest(tool.Handle, part, 0); task.wait(); firetouchinterest(tool.Handle, part, 1) end end
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end,
+})
+
+Tab:CreateButton({
+    Name = "빠른 검 구매 gui",
+    Callback = function()
+        local TweenService = game:GetService("TweenService")
+        local UserInputService = game:GetService("UserInputService")
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local oldGui = lp.PlayerGui:FindFirstChild("JamJamSwordBuyer")
+        if oldGui then oldGui:Destroy() end
+        local remote = ReplicatedStorage:WaitForChild("aa")
+        local gui = Instance.new("ScreenGui")
+        gui.Name = "JamJamSwordBuyer"
+        gui.ResetOnSpawn = false
+        gui.Parent = lp.PlayerGui
+        local mainFrame = Instance.new("Frame")
+        mainFrame.Size = UDim2.new(0, 180, 0, 160)
+        mainFrame.Position = UDim2.new(0.5, -90, 0.4, -80)
+        mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+        mainFrame.BackgroundTransparency = 0.15
+        mainFrame.Active = true
+        mainFrame.Parent = gui
+        Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 12)
+        local stroke = Instance.new("UIStroke")
+        stroke.Thickness = 3
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        stroke.Parent = mainFrame
+        local title = Instance.new("TextLabel")
+        title.Size = UDim2.new(1, 0, 0, 40)
+        title.Text = "상점 GUI"
+        title.Font = Enum.Font.GothamBold
+        title.TextSize = 18
+        title.BackgroundTransparency = 1
+        title.Parent = mainFrame
+        task.spawn(function()
+            local hue = 0
+            while true do
+                hue = hue + 1/360
+                if hue > 1 then hue = 0 end
+                local rainbowColor = Color3.fromHSV(hue, 0.7, 1)
+                stroke.Color = rainbowColor; title.TextColor3 = rainbowColor; task.wait()
+            end
+        end)
+        local function createButton(name, text, pos, color)
+            local btn = Instance.new("TextButton")
+            btn.Name = name; btn.Size = UDim2.new(0.85, 0, 0, 40); btn.Position = pos; btn.Text = text; btn.BackgroundColor3 = color; btn.TextColor3 = Color3.new(1, 1, 1); btn.Font = Enum.Font.GothamBold; btn.TextSize = 14; btn.Parent = mainFrame
+            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+            btn.MouseEnter:Connect(function() TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundTransparency = 0.2}):Play() end)
+            btn.MouseLeave:Connect(function() TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundTransparency = 0}):Play() end)
+            return btn
+        end
+        local BigSwordBtn = createButton("BigSwordBtn", "큰 칼 사기", UDim2.new(0.075, 0, 0.3, 0), Color3.fromRGB(40, 40, 40))
+        local SmallSwordBtn = createButton("SmallSwordBtn", "작은 칼 사기", UDim2.new(0.075, 0, 0.62, 0), Color3.fromRGB(40, 40, 40))
+        BigSwordBtn.MouseButton1Click:Connect(function() remote:FireServer("\236\180\157"); BigSwordBtn.Text = "구매 완료!"; task.wait(0.5); BigSwordBtn.Text = "큰 칼 사기" end)
+        SmallSwordBtn.MouseButton1Click:Connect(function() remote:FireServer("\236\185\188"); SmallSwordBtn.Text = "구매 완료!"; task.wait(0.5); SmallSwordBtn.Text = "작은 칼 사기" end)
+        local dragging, dragStart, startPos
+        mainFrame.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = true; dragStart = input.Position; startPos = mainFrame.Position end end)
+        UserInputService.InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then local delta = input.Position - dragStart; local targetPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y); TweenService:Create(mainFrame, TweenInfo.new(0.12, Enum.EasingStyle.Sine), {Position = targetPos}):Play() end end)
+        UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
+    end,
+})
+
+Tab:CreateSection("퍼온것들")
+
+Tab:CreateButton({
+    Name = "캐릭터 비동기화",
+    Callback = function()
+        loadstring(game:HttpGet("https://pastebin.com/raw/UVPAvrvL"))()
+    end,
+})
+
+local ESP_Tab = Window:CreateTab("ESP 설정", 0)
+
+_G.SkelConfig = {
+    Enabled = false,
+    BoxEnabled = false,
+    NameEnabled = false,
+    Color = Color3.fromRGB(40, 18, 68),
+    Rainbow = false,
+    RainbowSpeed = 1,
+    MaxDistance = 5000,
+    Thickness = 2
+}
+
+ESP_Tab:CreateSection("메인 컨트롤")
+
+ESP_Tab:CreateToggle({
+    Name = "스켈레톤 활성화",
+    CurrentValue = false,
+    Flag = "SkelEnabledFlag",
+    Callback = function(v)
+        _G.SkelConfig.Enabled = v
+    end,
+})
+
+ESP_Tab:CreateToggle({
+    Name = "박스 ESP 활성화",
+    CurrentValue = false,
+    Flag = "BoxEnabledFlag",
+    Callback = function(v)
+        _G.SkelConfig.BoxEnabled = v
+    end,
+})
+
+ESP_Tab:CreateToggle({
+    Name = "닉네임 표시",
+    CurrentValue = false,
+    Flag = "NameEnabledFlag",
+    Callback = function(v)
+        _G.SkelConfig.NameEnabled = v
+    end,
+})
+
+ESP_Tab:CreateColorPicker({
+    Name = "ESP 색상",
+    Color = Color3.fromRGB(40, 18, 68),
+    Flag = "ESPColorFlag",
+    Callback = function(v)
+        _G.SkelConfig.Color = v
+    end,
+})
+
+ESP_Tab:CreateToggle({
+    Name = "무지개 모드",
+    CurrentValue = false,
+    Flag = "ESPRainbowFlag",
+    Callback = function(v)
+        _G.SkelConfig.Rainbow = v
+    end,
+})
+
+ESP_Tab:CreateSlider({
+    Name = "무지개 속도 (1:느림, 20:빠름)",
+    Range = {1, 20},
+    Increment = 1,
+    CurrentValue = 1,
+    Flag = "ESPRainbowSpeedFlag",
+    Callback = function(v)
+        _G.SkelConfig.RainbowSpeed = v
+    end,
+})
+
+ESP_Tab:CreateSlider({
+    Name = "가시거리 제한",
+    Range = {100, 5000},
+    Increment = 1,
+    CurrentValue = 500,
+    Flag = "ESPDistanceFlag",
+    Callback = function(v)
+        _G.SkelConfig.MaxDistance = v
+    end,
+})
+
+local Camera = workspace.CurrentCamera
+
+local function createLine()
+    local line = Drawing.new("Line")
+    line.Visible = false
+    line.Transparency = 1
+    line.Thickness = _G.SkelConfig.Thickness
+    return line
+end
+
+local function createSquare()
+    local box = Drawing.new("Square")
+    box.Visible = false
+    box.Thickness = _G.SkelConfig.Thickness
+    box.Filled = false
+    return box
+end
+
+local function createText()
+    local text = Drawing.new("Text")
+    text.Visible = false
+    text.Center = true
+    text.Outline = true
+    text.Size = 16
+    return text
+end
+
+local BONES = {
+    R15 = {
+        {"Head", "UpperTorso"},
+        {"UpperTorso", "LowerTorso"},
+        {"UpperTorso", "LeftUpperArm"},
+        {"LeftUpperArm", "LeftLowerArm"},
+        {"LeftLowerArm", "LeftHand"},
+        {"UpperTorso", "RightUpperArm"},
+        {"RightUpperArm", "RightLowerArm"},
+        {"RightLowerArm", "RightHand"},
+        {"LowerTorso", "LeftUpperLeg"},
+        {"LeftUpperLeg", "LeftLowerLeg"},
+        {"LeftLowerLeg", "LeftFoot"},
+        {"LowerTorso", "RightUpperLeg"},
+        {"RightUpperLeg", "RightLowerLeg"},
+        {"RightLowerLeg", "RightFoot"}
+    },
+    R6 = {
+        {"Head", "Torso"},
+        {"Torso", "Left Arm"},
+        {"Torso", "Right Arm"},
+        {"Torso", "Left Leg"},
+        {"Torso", "Right Leg"}
+    }
+}
+
+local function applyESP(player)
+    local lines = {}
+    local box = createSquare()
+    local nameTag = createText()
+    RunService.RenderStepped:Connect(function()
+        local char = player.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") or player == lp then
+            for _, line in pairs(lines) do line.Visible = false end
+            box.Visible = false
+            nameTag.Visible = false
+            return
+        end
+        local hrp = char.HumanoidRootPart
+        local distance = (Camera.CFrame.Position - hrp.Position).Magnitude
+        if distance > _G.SkelConfig.MaxDistance then
+            for _, line in pairs(lines) do line.Visible = false end
+            box.Visible = false
+            nameTag.Visible = false
+            return
+        end
+        local finalColor = _G.SkelConfig.Rainbow and Color3.fromHSV((tick() * (_G.SkelConfig.RainbowSpeed / 10)) % 1, 1, 1) or _G.SkelConfig.Color
+        local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+        if onScreen then
+            local head = char:FindFirstChild("Head")
+            if head then
+                local headPos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+                local legPos = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0))
+                local sizeY = math.abs(headPos.Y - legPos.Y)
+                local sizeX = sizeY * 0.6
+                if _G.SkelConfig.BoxEnabled then
+                    box.Size = Vector2.new(sizeX, sizeY)
+                    box.Position = Vector2.new(pos.X - sizeX / 2, pos.Y - sizeY / 2)
+                    box.Color = finalColor
+                    box.Visible = true
+                else box.Visible = false end
+                if _G.SkelConfig.NameEnabled then
+                    nameTag.Position = Vector2.new(pos.X, (pos.Y - sizeY / 2) - 20)
+                    nameTag.Text = player.Name .. " [" .. math.floor(distance) .. "m]"
+                    nameTag.Color = finalColor
+                    nameTag.Visible = true
+                else nameTag.Visible = false end
+            end
+        else
+            box.Visible = false
+            nameTag.Visible = false
+        end
+        if _G.SkelConfig.Enabled and onScreen then
+            local isR15 = char:FindFirstChild("UpperTorso") ~= nil
+            local structure = isR15 and BONES.R15 or BONES.R6
+            for i, bone in pairs(structure) do
+                local pA, pB = char:FindFirstChild(bone[1]), char:FindFirstChild(bone[2])
+                if pA and pB then
+                    local posA, onA = Camera:WorldToViewportPoint(pA.Position)
+                    local posB, onB = Camera:WorldToViewportPoint(pB.Position)
+                    if onA and onB then
+                        lines[i] = lines[i] or createLine()
+                        lines[i].From = Vector2.new(posA.X, posA.Y)
+                        lines[i].To = Vector2.new(posB.X, posB.Y)
+                        lines[i].Color = finalColor
+                        lines[i].Visible = true
+                    elseif lines[i] then lines[i].Visible = false end
+                end
+            end
+        else
+            for _, line in pairs(lines) do line.Visible = false end
+        end
+    end)
+end
+
+for _, p in pairs(Players:GetPlayers()) do
+    applyESP(p)
+end
+
+Players.PlayerAdded:Connect(function(player)
+    applyESP(player)
+    checkStaff(player)
+end)
+
+task.spawn(function()
+    while task.wait(0.5) do
+        if staffDetectEnabled then
+            for _, player in pairs(Players:GetPlayers()) do
+                checkStaff(player)
+            end
+        end
+    end
+end)
+
+Rayfield:LoadConfiguration()
